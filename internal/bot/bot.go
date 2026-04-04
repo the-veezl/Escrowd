@@ -4,6 +4,7 @@ import (
 	"escrowd/internal/crypto"
 	"escrowd/internal/escrow"
 	"escrowd/internal/store"
+	"escrowd/internal/watcher"
 	"fmt"
 	"os"
 	"os/signal"
@@ -24,6 +25,8 @@ func Start() {
 		return
 	}
 	defer db.Close()
+
+	watcher.Start(db) // add this line
 
 	token := os.Getenv("DISCORD_TOKEN")
 	if token == "" {

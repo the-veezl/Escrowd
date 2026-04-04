@@ -54,3 +54,17 @@ func (s *Store) Delete(id string) error {
 		return tx.Delete([]byte(id))
 	})
 }
+func (s *Store) ListIDs() ([]string, error) {
+	var ids []string
+	err := s.db.View(func(tx *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		it := tx.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			ids = append(ids, string(item.Key()))
+		}
+		return nil
+	})
+	return ids, err
+}
