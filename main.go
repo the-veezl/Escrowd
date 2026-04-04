@@ -8,42 +8,23 @@ import (
 
 func main() {
 	secret := crypto.GenerateSecret()
-	fmt.Println("Secret:", secret)
 
-	deal := escrow.New("escrow-001", "alice", "bob", 10, secret)
-	fmt.Println("Status after creation:", deal.Status)
+	deal := escrow.New("alice", "bob", 10, secret)
 
-	err := escrow.Claim(&deal, "wrong-secret")
-	if err != nil {
-		fmt.Println("Claim failed:", err)
-	}
+	fmt.Println("ID:         ", deal.ID)
+	fmt.Println("Sender:     ", deal.Sender)
+	fmt.Println("Receiver:   ", deal.Receiver)
+	fmt.Println("Amount:     ", deal.Amount)
+	fmt.Println("Status:     ", deal.Status)
+	fmt.Println("Created at: ", deal.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Println("Expires at: ", deal.ExpiresAt.Format("2006-01-02 15:04:05"))
 
-	err = escrow.Claim(&deal, secret)
+	err := escrow.Claim(&deal, secret)
 	if err != nil {
 		fmt.Println("Claim failed:", err)
 	} else {
-		fmt.Println("Claim succeeded! Status:", deal.Status)
-	}
-	// Task 1 - try to claim again after already claimed
-	err = escrow.Claim(&deal, secret)
-	if err != nil {
-		fmt.Println("Claim again failed:", err)
-	}
-	// Task 2 - create a second deal and refund it
-	secret2 := crypto.GenerateSecret()
-	deal2 := escrow.New("escrow-002", "charlie", "diana", 25, secret2)
-	fmt.Println("\nDeal2 status after creation:", deal2.Status)
-
-	err = escrow.Refund(&deal2)
-	if err != nil {
-		fmt.Println("Refund failed:", err)
-	} else {
-		fmt.Println("Refund succeeded! Status:", deal2.Status)
+		fmt.Println("Claimed! New status:", deal.Status)
 	}
 
-	// now try to claim it after refunding
-	err = escrow.Claim(&deal2, secret2)
-	if err != nil {
-		fmt.Println("Claim after refund failed:", err)
-	}
+	fmt.Println("Is expired?", escrow.IsExpired(deal))
 }
