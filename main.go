@@ -40,6 +40,10 @@ func totalAmount(deal1 Escrow, deal2 Escrow) int {
 	total := deal1.Amount + deal2.Amount
 	return total
 }
+func checkSecret(hash string, guess string) bool {
+	hashedGuess := crypto.Hash(guess)
+	return hashedGuess == hash
+}
 
 func main() {
 
@@ -63,5 +67,29 @@ func main() {
 
 	wrongGuess := crypto.Hash("wrong-secret")
 	fmt.Println("Wrong?   ", wrongGuess == hash)
+	// Task 1 - hash the same word twice
+	hash1 := crypto.Hash("hello")
+	hash2 := crypto.Hash("hello")
+	fmt.Println("Hash 1:", hash1)
+	fmt.Println("Hash 2:", hash2)
+	fmt.Println("Are they the same?", hash1 == hash2)
+
+	fmt.Println()
+
+	// Task 2 - generate three secrets
+	secret1 := crypto.GenerateSecret()
+	secret2 := crypto.GenerateSecret()
+	secret3 := crypto.GenerateSecret()
+	fmt.Println("Secret 1:", secret1)
+	fmt.Println("Secret 2:", secret2)
+	fmt.Println("Secret 3:", secret3)
+
+	fmt.Println()
+	fmt.Println("--- Task 3: checkSecret ---")
+	mySecret := crypto.GenerateSecret()
+	myHash := crypto.Hash(mySecret)
+
+	fmt.Println("Correct guess:", checkSecret(myHash, mySecret))
+	fmt.Println("Wrong guess:  ", checkSecret(myHash, "wrong-secret"))
 
 }
