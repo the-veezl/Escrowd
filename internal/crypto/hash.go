@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 )
 
-func Hash(secret string) string {
+func HashSecret(secret string) string {
 
 	bytes := sha256.Sum256([]byte(secret))
 
@@ -19,4 +19,7 @@ func GenerateSecret() string {
 
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
+}
+func CheckSecret(hash string, guess string) bool {
+	return HashSecret(guess) == hash
 }
