@@ -1,0 +1,12 @@
+# Compiled binaries
+escrowd
+*.exe
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Environment variables
+.env
