@@ -65,8 +65,7 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	parts := strings.Fields(m.Content)
 	if len(parts) < 2 {
-		s.ChannelMessageSend(m.ChannelID, "usage: !escrow lock/claim/refund/status")
-		return
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow lock/claim/refund/status/dispute/evidence/resolve")
 	}
 
 	command := parts[1]
@@ -80,6 +79,12 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleRefund(s, m, parts)
 	case "status":
 		handleStatus(s, m, parts)
+	case "dispute":
+		handleDispute(s, m, parts)
+	case "evidence":
+		handleEvidence(s, m, parts)
+	case "resolve":
+		handleResolve(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -213,5 +218,114 @@ func handleStatus(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 		deal.ID, deal.Sender, deal.Receiver, deal.Amount,
 		deal.Status, deal.ExpiresAt.Format("2006-01-02 15:04:05"),
 		escrow.IsExpired(deal),
+	))
+
+}
+func handleDispute(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow dispute <id> <reason>")
+		return
+	}
+
+	id := parts[2]
+	reason := strings.Join(parts[3:], " ")
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	err = escrow.RaiseDispute(&deal, m.Author.Username, reason)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "dispute failed: "+err.Error())
+		return
+	}
+
+	err = db.Save(deal)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not save dispute")
+		return
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Dispute raised!\nID: `%s`\nDispute ID: `%s`\nRaised by: %s\nReason: %s\n\nThe escrow is now frozen. Submit evidence with:\n`!escrow evidence %s <link-to-proof>`",
+		deal.ID, deal.Dispute.ID, m.Author.Username, reason, deal.ID,
+	))
+}
+
+func handleEvidence(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow evidence <id> <link>")
+		return
+	}
+
+	id := parts[2]
+	link := parts[3]
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	err = escrow.AddEvidence(&deal, m.Author.Username, link)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "evidence failed: "+err.Error())
+		return
+	}
+
+	err = db.Save(deal)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not save evidence")
+		return
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Evidence recorded!\nDispute: `%s`\nSubmitted by: %s\nLink: %s\nTotal evidence: %d piece(s)",
+		deal.Dispute.ID, m.Author.Username, link, len(deal.Dispute.Evidence),
+	))
+}
+
+func handleResolve(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow resolve <id> <refund|release>")
+		return
+	}
+
+	id := parts[2]
+	resolution := parts[3]
+
+	if resolution != "refund" && resolution != "release" {
+		s.ChannelMessageSend(m.ChannelID, "resolution must be either 'refund' or 'release'")
+		return
+	}
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	err = escrow.ResolveDispute(&deal, resolution)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "resolve failed: "+err.Error())
+		return
+	}
+
+	err = db.Save(deal)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not save resolution")
+		return
+	}
+
+	outcome := "funds released to receiver"
+	if resolution == "refund" {
+		outcome = "funds returned to sender"
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Dispute resolved!\nID: `%s`\nResolution: %s\nOutcome: %s\nFinal status: %s",
+		deal.ID, resolution, outcome, deal.Status,
 	))
 }
