@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"escrowd/internal/crypto"
+	"fmt"
+)
 
 type Escrow struct {
 	ID        string
@@ -48,5 +51,17 @@ func main() {
 	total := totalAmount(deal1, deal2)
 
 	fmt.Printf("Total locked: %d\n", total)
+
+	secret := crypto.GenerateSecret()
+	hash := crypto.Hash(secret)
+
+	fmt.Println("Secret:  ", secret)
+	fmt.Println("Hash:     ", hash)
+
+	guess := crypto.Hash(secret)
+	fmt.Println("Match?    ", guess == hash)
+
+	wrongGuess := crypto.Hash("wrong-secret")
+	fmt.Println("Wrong?   ", wrongGuess == hash)
 
 }
