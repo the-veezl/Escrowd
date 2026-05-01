@@ -11,3 +11,4 @@ escrowd
 # Environment variables
 .env
 data/
+.env
