@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"escrowd/internal/audit"
+	"escrowd/internal/backup"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -37,6 +38,7 @@ func Start() {
 	watcher.Start(db)
 	limiter = ratelimit.New(10, time.Hour)
 	auditLog = audit.New(db.AuditDB)
+	backup.StartScheduled("./data", "./backups", 24*time.Hour)
 
 	token := os.Getenv("DISCORD_TOKEN")
 	if token == "" {
@@ -107,6 +109,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleHistory(s, m, parts)
 	case "forget":
 		handleForget(s, m, parts)
+	case "backup":
+		handleBackup(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -421,7 +425,7 @@ func handleResolve(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 	// only the bot owner can resolve disputes
 	// the bot owner is identified by their Discord username
 	// replace "klucianob" with your actual Discord username
-	if m.Author.Username != "klucianob" {
+	if m.Author.Username != "klucianob_95373" {
 		s.ChannelMessageSend(m.ChannelID, "only an escrowd admin can resolve disputes")
 		return
 	}
@@ -517,5 +521,25 @@ func handleForget(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
 		"%s your data deletion request has been processed. Check your DMs for details.",
 		m.Author.Mention(),
+	))
+}
+func handleBackup(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if m.Author.Username != "klucianob_95373" {
+		s.ChannelMessageSend(m.ChannelID, "only an escrowd admin can trigger backups — your username is: "+m.Author.Username)
+		return
+	}
+
+	filename, err := backup.Create("./data", "./backups")
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "backup failed: "+err.Error())
+		return
+	}
+
+	auditLog.Record("system", audit.EventType("BACKUP_CREATED"),
+		m.Author.ID, m.Author.Username, "manual backup: "+filename)
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Backup created successfully\nFile: `%s`\nBoth databases backed up and compressed.",
+		filename,
 	))
 }

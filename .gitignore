@@ -12,3 +12,4 @@ escrowd
 .env
 data/
 .env
+backups/
