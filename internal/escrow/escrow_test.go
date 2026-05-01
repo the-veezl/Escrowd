@@ -6,16 +6,22 @@ import (
 )
 
 func TestNew_CreatesLockedEscrow(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	if deal.Status != StatusLocked {
 		t.Errorf("expected status locked, got %s", deal.Status)
 	}
-	if deal.Sender != "alice" {
-		t.Errorf("expected sender alice, got %s", deal.Sender)
+	if deal.SenderName != "alice" {
+		t.Errorf("expected sender alice, got %s", deal.SenderName)
 	}
-	if deal.Receiver != "bob" {
-		t.Errorf("expected receiver bob, got %s", deal.Receiver)
+	if deal.ReceiverName != "bob" {
+		t.Errorf("expected receiver bob, got %s", deal.ReceiverName)
+	}
+	if deal.SenderID != "alice-id" {
+		t.Errorf("expected sender ID alice-id, got %s", deal.SenderID)
+	}
+	if deal.ReceiverID != "bob-id" {
+		t.Errorf("expected receiver ID bob-id, got %s", deal.ReceiverID)
 	}
 	if deal.Amount != 10 {
 		t.Errorf("expected amount 10, got %d", deal.Amount)
@@ -29,7 +35,7 @@ func TestNew_CreatesLockedEscrow(t *testing.T) {
 }
 
 func TestNew_ExpiryIsInFuture(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	if !deal.ExpiresAt.After(time.Now()) {
 		t.Errorf("expected expiry to be in the future")
@@ -37,8 +43,8 @@ func TestNew_ExpiryIsInFuture(t *testing.T) {
 }
 
 func TestNew_UniqueIDs(t *testing.T) {
-	deal1 := New("alice", "bob", 10, "secret123")
-	deal2 := New("alice", "bob", 10, "secret123")
+	deal1 := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
+	deal2 := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	if deal1.ID == deal2.ID {
 		t.Errorf("expected unique IDs, got duplicate: %s", deal1.ID)
@@ -46,7 +52,7 @@ func TestNew_UniqueIDs(t *testing.T) {
 }
 
 func TestClaim_CorrectSecret(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	err := Claim(&deal, "secret123")
 
@@ -59,7 +65,7 @@ func TestClaim_CorrectSecret(t *testing.T) {
 }
 
 func TestClaim_WrongSecret(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	err := Claim(&deal, "wrongsecret")
 
@@ -72,7 +78,7 @@ func TestClaim_WrongSecret(t *testing.T) {
 }
 
 func TestClaim_AlreadyClaimed(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	Claim(&deal, "secret123")
 
 	err := Claim(&deal, "secret123")
@@ -83,7 +89,7 @@ func TestClaim_AlreadyClaimed(t *testing.T) {
 }
 
 func TestClaim_AfterRefund(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	Refund(&deal)
 
 	err := Claim(&deal, "secret123")
@@ -94,7 +100,7 @@ func TestClaim_AfterRefund(t *testing.T) {
 }
 
 func TestRefund_LockedDeal(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	err := Refund(&deal)
 
@@ -107,7 +113,7 @@ func TestRefund_LockedDeal(t *testing.T) {
 }
 
 func TestRefund_AlreadyClaimed(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	Claim(&deal, "secret123")
 
 	err := Refund(&deal)
@@ -118,7 +124,7 @@ func TestRefund_AlreadyClaimed(t *testing.T) {
 }
 
 func TestRefund_AlreadyRefunded(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	Refund(&deal)
 
 	err := Refund(&deal)
@@ -129,9 +135,9 @@ func TestRefund_AlreadyRefunded(t *testing.T) {
 }
 
 func TestRaiseDispute_LockedDeal(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
-	err := RaiseDispute(&deal, "alice", "bob never delivered")
+	err := RaiseDispute(&deal, "alice-id", "alice", "bob never delivered")
 
 	if err != nil {
 		t.Errorf("expected dispute to succeed, got error: %s", err)
@@ -145,13 +151,16 @@ func TestRaiseDispute_LockedDeal(t *testing.T) {
 	if deal.Dispute.Reason != "bob never delivered" {
 		t.Errorf("expected reason to match, got %s", deal.Dispute.Reason)
 	}
+	if deal.Dispute.RaisedByID != "alice-id" {
+		t.Errorf("expected RaisedByID to be alice-id, got %s", deal.Dispute.RaisedByID)
+	}
 }
 
 func TestRaiseDispute_AlreadyClaimed(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	Claim(&deal, "secret123")
 
-	err := RaiseDispute(&deal, "alice", "i changed my mind")
+	err := RaiseDispute(&deal, "alice-id", "alice", "i changed my mind")
 
 	if err == nil {
 		t.Errorf("expected dispute to fail on claimed deal")
@@ -159,10 +168,10 @@ func TestRaiseDispute_AlreadyClaimed(t *testing.T) {
 }
 
 func TestRaiseDispute_Duplicate(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
-	RaiseDispute(&deal, "alice", "first dispute")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
+	RaiseDispute(&deal, "alice-id", "alice", "first dispute")
 
-	err := RaiseDispute(&deal, "alice", "second dispute")
+	err := RaiseDispute(&deal, "alice-id", "alice", "second dispute")
 
 	if err == nil {
 		t.Errorf("expected second dispute to fail")
@@ -170,10 +179,10 @@ func TestRaiseDispute_Duplicate(t *testing.T) {
 }
 
 func TestAddEvidence_ActiveDispute(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
-	RaiseDispute(&deal, "alice", "bob never delivered")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
+	RaiseDispute(&deal, "alice-id", "alice", "bob never delivered")
 
-	err := AddEvidence(&deal, "alice", "https://proof.com/screenshot")
+	err := AddEvidence(&deal, "alice-id", "alice", "https://proof.com/screenshot")
 
 	if err != nil {
 		t.Errorf("expected evidence to be added, got error: %s", err)
@@ -184,9 +193,9 @@ func TestAddEvidence_ActiveDispute(t *testing.T) {
 }
 
 func TestAddEvidence_NoDispute(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
-	err := AddEvidence(&deal, "alice", "https://proof.com/screenshot")
+	err := AddEvidence(&deal, "alice-id", "alice", "https://proof.com/screenshot")
 
 	if err == nil {
 		t.Errorf("expected evidence to fail with no active dispute")
@@ -194,8 +203,8 @@ func TestAddEvidence_NoDispute(t *testing.T) {
 }
 
 func TestResolveDispute_Refund(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
-	RaiseDispute(&deal, "alice", "bob never delivered")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
+	RaiseDispute(&deal, "alice-id", "alice", "bob never delivered")
 
 	err := ResolveDispute(&deal, "refund")
 
@@ -208,8 +217,8 @@ func TestResolveDispute_Refund(t *testing.T) {
 }
 
 func TestResolveDispute_Release(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
-	RaiseDispute(&deal, "alice", "bob never delivered")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
+	RaiseDispute(&deal, "alice-id", "alice", "bob never delivered")
 
 	err := ResolveDispute(&deal, "release")
 
@@ -222,7 +231,7 @@ func TestResolveDispute_Release(t *testing.T) {
 }
 
 func TestResolveDispute_NoDispute(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	err := ResolveDispute(&deal, "refund")
 
@@ -232,7 +241,7 @@ func TestResolveDispute_NoDispute(t *testing.T) {
 }
 
 func TestIsExpired_NotExpired(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 
 	if IsExpired(deal) {
 		t.Errorf("expected deal to not be expired immediately after creation")
@@ -240,7 +249,7 @@ func TestIsExpired_NotExpired(t *testing.T) {
 }
 
 func TestIsExpired_Expired(t *testing.T) {
-	deal := New("alice", "bob", 10, "secret123")
+	deal := New("alice-id", "alice", "bob-id", "bob", 10, "secret123")
 	deal.ExpiresAt = time.Now().Add(-1 * time.Hour)
 
 	if !IsExpired(deal) {

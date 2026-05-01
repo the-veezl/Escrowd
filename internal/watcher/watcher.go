@@ -40,7 +40,7 @@ func runCheck(db *store.Store) {
 			if err != nil {
 				continue
 			}
-			fmt.Printf("auto-refunded expired deal: %s (sender: %s)\n", deal.ID, deal.Sender)
+			fmt.Printf("auto-refunded expired deal: %s (sender: %s)\n", deal.ID, deal.SenderName)
 			expired++
 		}
 
@@ -53,7 +53,7 @@ func runCheck(db *store.Store) {
 			if err != nil {
 				continue
 			}
-			fmt.Printf("auto-resolved expired dispute: %s (sender: %s)\n", deal.ID, deal.Sender)
+			fmt.Printf("auto-resolved expired dispute: %s (sender: %s)\n", deal.ID, deal.SenderName)
 			expired++
 		}
 	}

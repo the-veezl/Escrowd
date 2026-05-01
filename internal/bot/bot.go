@@ -129,15 +129,16 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 		return
 	}
 
-	sender := m.Author.Username
+	senderID := m.Author.ID
+	senderName := m.Author.Username
 
-	if err := validator.ValidateName(sender); err != nil {
+	if err := validator.ValidateName(senderName); err != nil {
 		s.ChannelMessageSend(m.ChannelID, "invalid sender name: "+err.Error())
 		return
 	}
 
 	secret := crypto.GenerateSecret()
-	deal := escrow.New(sender, receiver, amount, secret)
+	deal := escrow.New(senderID, senderName, receiver, receiver, amount, secret)
 
 	err = db.Save(deal)
 	if err != nil {
@@ -147,8 +148,8 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
 		"Escrow locked!\nID: `%s`\nFrom: %s\nTo: %s\nAmount: %d\nExpires: %s\n\nSecret sent to your DMs %s",
-		deal.ID, deal.Sender, deal.Receiver, deal.Amount,
-		deal.ExpiresAt.Format("2006-01-02 15:04:05"), sender,
+		deal.ID, deal.SenderName, deal.ReceiverName, deal.Amount,
+		deal.ExpiresAt.Format("2006-01-02 15:04:05"), senderName,
 	))
 
 	dm, err := s.UserChannelCreate(m.Author.ID)
@@ -158,7 +159,7 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 	}
 	s.ChannelMessageSend(dm.ID, fmt.Sprintf(
 		"Your secret for escrow `%s`:\n`%s`\n\nKeep this private. Share it with %s only after they deliver.",
-		deal.ID, secret, receiver,
+		deal.ID, secret, deal.ReceiverName,
 	))
 }
 
@@ -224,7 +225,7 @@ func handleRefund(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 		return
 	}
 
-	if deal.Sender != m.Author.Username {
+	if deal.SenderID != m.Author.ID {
 		s.ChannelMessageSend(m.ChannelID, "only the sender can refund this escrow")
 		return
 	}
@@ -262,7 +263,7 @@ func handleStatus(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
 		"ID: `%s`\nFrom: %s\nTo: %s\nAmount: %d\nStatus: %s\nExpires: %s\nExpired: %v",
-		deal.ID, deal.Sender, deal.Receiver, deal.Amount,
+		deal.ID, deal.SenderName, deal.ReceiverName, deal.Amount,
 		deal.Status, deal.ExpiresAt.Format("2006-01-02 15:04:05"),
 		escrow.IsExpired(deal),
 	))
@@ -293,12 +294,12 @@ func handleDispute(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 		return
 	}
 
-	if deal.Sender != m.Author.Username && deal.Receiver != m.Author.Username {
+	if deal.SenderID != m.Author.ID && deal.ReceiverID != m.Author.ID {
 		s.ChannelMessageSend(m.ChannelID, "only the sender or receiver can dispute this escrow")
 		return
 	}
 
-	err = escrow.RaiseDispute(&deal, m.Author.Username, reason)
+	err = escrow.RaiseDispute(&deal, m.Author.ID, m.Author.Username, reason)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "dispute failed: "+err.Error())
 		return
@@ -341,12 +342,12 @@ func handleEvidence(s *discordgo.Session, m *discordgo.MessageCreate, parts []st
 		return
 	}
 
-	if deal.Sender != m.Author.Username && deal.Receiver != m.Author.Username {
+	if deal.SenderID != m.Author.ID && deal.ReceiverID != m.Author.ID {
 		s.ChannelMessageSend(m.ChannelID, "only the sender or receiver can submit evidence")
 		return
 	}
 
-	err = escrow.AddEvidence(&deal, m.Author.Username, link)
+	err = escrow.AddEvidence(&deal, m.Author.ID, m.Author.Username, link)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "evidence failed: "+err.Error())
 		return
