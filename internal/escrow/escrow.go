@@ -3,6 +3,7 @@ package escrow
 import (
 	"errors"
 	"escrowd/internal/crypto"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,12 +42,14 @@ type Escrow struct {
 	CreatedAt    time.Time
 	ExpiresAt    time.Time
 	Dispute      *Dispute
+	Signature    string
 }
 
 func New(senderID string, senderName string, receiverID string, receiverName string, amount int, secret string) Escrow {
 	now := time.Now()
-	return Escrow{
-		ID:           uuid.NewString(),
+	id := uuid.NewString()
+	deal := Escrow{
+		ID:           id,
 		SenderID:     senderID,
 		SenderName:   senderName,
 		ReceiverID:   receiverID,
@@ -57,6 +60,8 @@ func New(senderID string, senderName string, receiverID string, receiverName str
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(48 * time.Hour),
 	}
+	deal.Signature = generateSignature(id, senderID, receiverID, amount, now)
+	return deal
 }
 
 func Claim(deal *Escrow, guess string) error {
@@ -132,4 +137,13 @@ func ResolveDispute(deal *Escrow, resolution string) error {
 
 func IsExpired(deal Escrow) bool {
 	return time.Now().After(deal.ExpiresAt)
+}
+func generateSignature(id string, senderID string, receiverID string, amount int, createdAt time.Time) string {
+	data := fmt.Sprintf("%s:%s:%s:%d:%d", id, senderID, receiverID, amount, createdAt.Unix())
+	return crypto.HashSecret(data)
+}
+
+func VerifySignature(deal Escrow) bool {
+	expected := generateSignature(deal.ID, deal.SenderID, deal.ReceiverID, deal.Amount, deal.CreatedAt)
+	return expected == deal.Signature
 }

@@ -268,19 +268,28 @@ func handleStatus(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 
 	id := parts[2]
 
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
 	deal, err := db.Get(id)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
 		return
 	}
 
+	verified := "✅ verified"
+	if !escrow.VerifySignature(deal) {
+		verified = "⚠️ TAMPERED — signature mismatch"
+	}
+
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
-		"ID: `%s`\nFrom: %s\nTo: %s\nAmount: %d\nStatus: %s\nExpires: %s\nExpired: %v",
+		"ID: `%s`\nFrom: %s\nTo: %s\nAmount: %d\nStatus: %s\nExpires: %s\nExpired: %v\nIntegrity: %s",
 		deal.ID, deal.SenderName, deal.ReceiverName, deal.Amount,
 		deal.Status, deal.ExpiresAt.Format("2006-01-02 15:04:05"),
-		escrow.IsExpired(deal),
+		escrow.IsExpired(deal), verified,
 	))
-
 }
 func handleDispute(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
 	if len(parts) < 4 {
