@@ -91,3 +91,47 @@ func (s *Store) ListIDs() ([]string, error) {
 	})
 	return ids, err
 }
+func (s *Store) DeleteUserData(userID string) (int, error) {
+	ids, err := s.ListIDs()
+	if err != nil {
+		return 0, err
+	}
+
+	anonymized := 0
+	for _, id := range ids {
+		deal, err := s.Get(id)
+		if err != nil {
+			continue
+		}
+
+		changed := false
+
+		if deal.SenderID == userID {
+			deal.SenderID = "deleted-user"
+			deal.SenderName = "deleted-user"
+			changed = true
+		}
+
+		if deal.ReceiverID == userID {
+			deal.ReceiverID = "deleted-user"
+			deal.ReceiverName = "deleted-user"
+			changed = true
+		}
+
+		if deal.Dispute != nil && deal.Dispute.RaisedByID == userID {
+			deal.Dispute.RaisedByID = "deleted-user"
+			deal.Dispute.RaisedByName = "deleted-user"
+			changed = true
+		}
+
+		if changed {
+			err = s.Save(deal)
+			if err != nil {
+				continue
+			}
+			anonymized++
+		}
+	}
+
+	return anonymized, nil
+}

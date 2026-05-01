@@ -105,6 +105,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleResolve(s, m, parts)
 	case "history":
 		handleHistory(s, m, parts)
+	case "forget":
+		handleForget(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -480,4 +482,40 @@ func handleHistory(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 	}
 
 	s.ChannelMessageSend(m.ChannelID, msg)
+}
+func handleForget(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	dm, err := s.UserChannelCreate(m.Author.ID)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not open DM")
+		return
+	}
+
+	count, err := db.DeleteUserData(m.Author.ID)
+	if err != nil {
+		s.ChannelMessageSend(dm.ID, "could not process data deletion request")
+		return
+	}
+
+	auditLog.Record(
+		"system",
+		audit.EventType("USER_DATA_DELETED"),
+		m.Author.ID,
+		m.Author.Username,
+		fmt.Sprintf("user requested data deletion — %d deals anonymized", count),
+	)
+
+	s.ChannelMessageSend(dm.ID, fmt.Sprintf(
+		"Your data deletion request has been processed.\n\n"+
+			"• %d deal(s) have been anonymized\n"+
+			"• Your user ID and username have been replaced with 'deleted-user'\n"+
+			"• Financial records are retained for legal compliance\n"+
+			"• Audit logs retain event timestamps but not your identity\n\n"+
+			"This action is irreversible.",
+		count,
+	))
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"%s your data deletion request has been processed. Check your DMs for details.",
+		m.Author.Mention(),
+	))
 }
