@@ -169,6 +169,7 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 		"Your secret for escrow `%s`:\n`%s`\n\nKeep this private. Share it with %s only after they deliver.",
 		deal.ID, secret, deal.ReceiverName,
 	))
+	crypto.ZeroString(&secret)
 }
 
 func handleClaim(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
