@@ -1,8 +1,11 @@
 package store
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"escrowd/internal/escrow"
+	"os"
 
 	badger "github.com/dgraph-io/badger/v4"
 )
@@ -13,8 +16,15 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
+	key, err := hex.DecodeString(os.Getenv("ESCROWD_DB_KEY"))
+	if err != nil || len(key) != 32 {
+		return nil, errors.New("ESCROWD_DB_KEY must be a valid 32-byte hex string")
+	}
+
 	opts := badger.DefaultOptions(path)
 	opts.Logger = nil
+	opts.EncryptionKey = key
+	opts.IndexCacheSize = 100 << 20
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
@@ -22,6 +32,8 @@ func New(path string) (*Store, error) {
 
 	auditOpts := badger.DefaultOptions(path + "-audit")
 	auditOpts.Logger = nil
+	auditOpts.EncryptionKey = key
+	auditOpts.IndexCacheSize = 100 << 20
 	auditDB, err := badger.Open(auditOpts)
 	if err != nil {
 		return nil, err
