@@ -16,11 +16,14 @@ import (
 	"escrowd/internal/ratelimit"
 	"time"
 
+	"escrowd/internal/audit"
+
 	"github.com/bwmarrin/discordgo"
 )
 
 var db *store.Store
 var limiter *ratelimit.Limiter
+var auditLog *audit.Log
 
 func Start() {
 	var err error
@@ -33,6 +36,7 @@ func Start() {
 
 	watcher.Start(db)
 	limiter = ratelimit.New(10, time.Hour)
+	auditLog = audit.New(db.AuditDB)
 
 	token := os.Getenv("DISCORD_TOKEN")
 	if token == "" {
@@ -99,6 +103,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleEvidence(s, m, parts)
 	case "resolve":
 		handleResolve(s, m, parts)
+	case "history":
+		handleHistory(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -141,6 +147,8 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 	deal := escrow.New(senderID, senderName, receiver, receiver, amount, secret)
 
 	err = db.Save(deal)
+	auditLog.Record(deal.ID, audit.EventLocked, senderID, senderName,
+		fmt.Sprintf("locked %d for %s", deal.Amount, deal.ReceiverName))
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save deal")
 		return
@@ -195,6 +203,8 @@ func handleClaim(s *discordgo.Session, m *discordgo.MessageCreate, parts []strin
 	}
 
 	err = db.Save(deal)
+	auditLog.Record(deal.ID, audit.EventClaimed, m.Author.ID, m.Author.Username,
+		"escrow claimed with correct secret")
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save deal")
 		return
@@ -237,6 +247,8 @@ func handleRefund(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 	}
 
 	err = db.Save(deal)
+	auditLog.Record(deal.ID, audit.EventRefunded, m.Author.ID, m.Author.Username,
+		"escrow refunded by sender")
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save deal")
 		return
@@ -306,6 +318,8 @@ func handleDispute(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 	}
 
 	err = db.Save(deal)
+	auditLog.Record(deal.ID, audit.EventDisputed, m.Author.ID, m.Author.Username,
+		"dispute raised: "+reason)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save dispute")
 		return
@@ -354,6 +368,8 @@ func handleEvidence(s *discordgo.Session, m *discordgo.MessageCreate, parts []st
 	}
 
 	err = db.Save(deal)
+	auditLog.Record(deal.ID, audit.EventEvidence, m.Author.ID, m.Author.Username,
+		"evidence submitted: "+link)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save evidence")
 		return
@@ -399,6 +415,8 @@ func handleResolve(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 	}
 
 	err = escrow.ResolveDispute(&deal, resolution)
+	auditLog.Record(deal.ID, audit.EventResolved, m.Author.ID, m.Author.Username,
+		"dispute resolved: "+resolution)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "resolve failed: "+err.Error())
 		return
@@ -419,4 +437,37 @@ func handleResolve(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 		"Dispute resolved!\nID: `%s`\nResolution: %s\nOutcome: %s\nFinal status: %s",
 		deal.ID, resolution, outcome, deal.Status,
 	))
+}
+func handleHistory(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 3 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow history <id>")
+		return
+	}
+
+	id := parts[2]
+
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
+	entries, err := auditLog.GetByEscrow(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not retrieve history")
+		return
+	}
+
+	if len(entries) == 0 {
+		s.ChannelMessageSend(m.ChannelID, "no history found for this escrow")
+		return
+	}
+
+	msg := fmt.Sprintf("Audit trail for `%s`:\n", id)
+	for _, e := range entries {
+		msg += fmt.Sprintf("• %s — %s by %s at %s\n",
+			e.Event, e.Detail, e.ActorName,
+			e.Timestamp.Format("2006-01-02 15:04:05"))
+	}
+
+	s.ChannelMessageSend(m.ChannelID, msg)
 }

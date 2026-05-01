@@ -8,7 +8,8 @@ import (
 )
 
 type Store struct {
-	db *badger.DB
+	db      *badger.DB
+	AuditDB *badger.DB
 }
 
 func New(path string) (*Store, error) {
@@ -18,11 +19,20 @@ func New(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+
+	auditOpts := badger.DefaultOptions(path + "-audit")
+	auditOpts.Logger = nil
+	auditDB, err := badger.Open(auditOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Store{db: db, AuditDB: auditDB}, nil
 }
 
 func (s *Store) Close() {
 	s.db.Close()
+	s.AuditDB.Close()
 }
 
 func (s *Store) Save(deal escrow.Escrow) error {
@@ -54,6 +64,7 @@ func (s *Store) Delete(id string) error {
 		return tx.Delete([]byte(id))
 	})
 }
+
 func (s *Store) ListIDs() ([]string, error) {
 	var ids []string
 	err := s.db.View(func(tx *badger.Txn) error {
