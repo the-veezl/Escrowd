@@ -1,5 +1,7 @@
 # escrowd
 
+https://discord.com/oauth2/authorize?client_id=1489985642094919883&permissions=274877975552&integration_type=0&scope=bot
+
 A lightweight, cryptographic escrow CLI written in Go.
 
 escrowd lets two parties trade digital goods safely without trusting each other.
