@@ -19,6 +19,7 @@ import (
 
 	"escrowd/internal/audit"
 	"escrowd/internal/backup"
+	"escrowd/internal/bruteforce"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -26,6 +27,7 @@ import (
 var db *store.Store
 var limiter *ratelimit.Limiter
 var auditLog *audit.Log
+var shield *bruteforce.Shield
 
 func Start() {
 	var err error
@@ -39,6 +41,7 @@ func Start() {
 	watcher.Start(db)
 	limiter = ratelimit.New(10, time.Hour)
 	auditLog = audit.New(db.AuditDB)
+	shield = bruteforce.New()
 	backup.StartScheduled("./data", "./backups", 24*time.Hour)
 
 	token := os.Getenv("DISCORD_TOKEN")
@@ -200,6 +203,30 @@ func handleClaim(s *discordgo.Session, m *discordgo.MessageCreate, parts []strin
 		return
 	}
 
+	// check if deal is locked out from too many failed attempts
+	locked, remaining := shield.IsLocked(id)
+	if locked {
+		auditLog.Record(id, audit.EventType("CLAIM_BLOCKED"),
+			m.Author.ID, m.Author.Username,
+			"claim blocked — deal locked due to too many failed attempts")
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+			"This escrow is locked due to too many failed claim attempts.\n"+
+				"Try again in %s.",
+			formatDuration(remaining),
+		))
+		return
+	}
+
+	// check exponential backoff — must wait between attempts
+	mustWait, waitRemaining := shield.MustWait(id)
+	if mustWait {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+			"Too many failed attempts. Please wait %s before trying again.",
+			formatDuration(waitRemaining),
+		))
+		return
+	}
+
 	deal, err := db.Get(id)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
@@ -208,24 +235,53 @@ func handleClaim(s *discordgo.Session, m *discordgo.MessageCreate, parts []strin
 
 	err = escrow.Claim(&deal, secret)
 	if err != nil {
-		s.ChannelMessageSend(m.ChannelID, "claim failed: "+err.Error())
+		// record the failed attempt and apply backoff
+		delay, nowLocked := shield.RecordFailure(id)
+		remaining := shield.AttemptsRemaining(id)
+
+		auditLog.Record(id, audit.EventType("CLAIM_FAILED"),
+			m.Author.ID, m.Author.Username,
+			fmt.Sprintf("failed claim attempt — %d attempts remaining", remaining))
+
+		if nowLocked {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+				"Claim failed: %s\n\n"+
+					"Too many failed attempts. This escrow is now locked for 1 hour.\n"+
+					"If you are the legitimate receiver, contact the sender.",
+				err.Error(),
+			))
+			return
+		}
+
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+			"Claim failed: %s\n\n"+
+				"Attempts remaining: %d\n"+
+				"Next attempt allowed in: %s",
+			err.Error(),
+			remaining,
+			bruteforce.FormatDelay(delay),
+		))
 		return
 	}
 
+	// successful claim — clear the shield for this deal
+	shield.RecordSuccess(id)
+
 	err = db.Save(deal)
-	auditLog.Record(deal.ID, audit.EventClaimed, m.Author.ID, m.Author.Username,
-		"escrow claimed with correct secret")
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save deal")
 		return
 	}
+
+	auditLog.Record(deal.ID, audit.EventClaimed,
+		m.Author.ID, m.Author.Username,
+		"escrow claimed with correct secret")
 
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
 		"Escrow claimed!\nID: `%s`\nStatus: %s",
 		deal.ID, deal.Status,
 	))
 }
-
 func handleRefund(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
 	if len(parts) < 3 {
 		s.ChannelMessageSend(m.ChannelID, "usage: !escrow refund <id>")
@@ -628,4 +684,13 @@ func handlePaid(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 		"Payment confirmed! Dispute `%s` upgraded to priority.\nAn admin will review and resolve within 15 minutes.",
 		deal.Dispute.ID,
 	))
+}
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.0f seconds", d.Seconds())
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%.0f minutes", d.Minutes())
+	}
+	return fmt.Sprintf("%.1f hours", d.Hours())
 }
