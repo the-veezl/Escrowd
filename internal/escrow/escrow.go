@@ -28,6 +28,8 @@ type Dispute struct {
 	RaisedAt     time.Time
 	ResolvedAt   time.Time
 	Resolution   string
+	Priority     bool
+	PayReference string
 }
 
 type Escrow struct {

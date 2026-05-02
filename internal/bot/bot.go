@@ -3,6 +3,7 @@ package bot
 import (
 	"escrowd/internal/crypto"
 	"escrowd/internal/escrow"
+	"escrowd/internal/payment"
 	"escrowd/internal/store"
 	"escrowd/internal/validator"
 	"escrowd/internal/watcher"
@@ -111,6 +112,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleForget(s, m, parts)
 	case "backup":
 		handleBackup(s, m, parts)
+	case "paid":
+		handlePaid(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -334,19 +337,43 @@ func handleDispute(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 	}
 
 	err = db.Save(deal)
-	auditLog.Record(deal.ID, audit.EventDisputed, m.Author.ID, m.Author.Username,
-		"dispute raised: "+reason)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save dispute")
 		return
 	}
 
+	auditLog.Record(deal.ID, audit.EventDisputed,
+		m.Author.ID, m.Author.Username,
+		"dispute raised: "+reason)
+
+	// generate payment link for turbo dispute
+	reference := fmt.Sprintf("dispute-%s", deal.Dispute.ID)
+	payURL, err := payment.InitializePayment(
+		m.Author.Username+"@escrowd.app",
+		6000, // KES 60 in kobo
+		reference,
+		map[string]string{
+			"escrow_id":  deal.ID,
+			"dispute_id": deal.Dispute.ID,
+			"raised_by":  m.Author.Username,
+		},
+	)
+
+	freeOption := "Free: auto-resolved in 24 hours"
+	fastOption := "Fast option unavailable right now"
+	if err == nil {
+		fastOption = fmt.Sprintf("Fast: pay KES 60 for 15-min resolution\n%s", payURL)
+	}
+
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
-		"Dispute raised!\nID: `%s`\nDispute ID: `%s`\nRaised by: %s\nReason: %s\n\nThe escrow is now frozen. Submit evidence with:\n`!escrow evidence %s <link-to-proof>`",
-		deal.ID, deal.Dispute.ID, m.Author.Username, reason, deal.ID,
+		"Dispute raised!\nID: `%s`\nDispute ID: `%s`\nRaised by: %s\nReason: %s\n\n"+
+			"The escrow is now frozen.\n\n"+
+			"Resolution options:\n• %s\n• %s\n\n"+
+			"Submit evidence with:\n`!escrow evidence %s <link-to-proof>`",
+		deal.ID, deal.Dispute.ID, m.Author.Username, reason,
+		freeOption, fastOption, deal.ID,
 	))
 }
-
 func handleEvidence(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
 	if len(parts) < 4 {
 		s.ChannelMessageSend(m.ChannelID, "usage: !escrow evidence <id> <link>")
@@ -541,5 +568,64 @@ func handleBackup(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
 		"Backup created successfully\nFile: `%s`\nBoth databases backed up and compressed.",
 		filename,
+	))
+}
+func handlePaid(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow paid <id> <paystack-reference>")
+		return
+	}
+
+	id := parts[2]
+	reference := parts[3]
+
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	if deal.Status != escrow.StatusDisputed {
+		s.ChannelMessageSend(m.ChannelID, "no active dispute on this escrow")
+		return
+	}
+
+	if deal.SenderID != m.Author.ID && deal.ReceiverID != m.Author.ID {
+		s.ChannelMessageSend(m.ChannelID, "only the sender or receiver can upgrade this dispute")
+		return
+	}
+
+	paid, err := payment.VerifyPayment(reference)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not verify payment: "+err.Error())
+		return
+	}
+
+	if !paid {
+		s.ChannelMessageSend(m.ChannelID, "payment not confirmed — please complete payment first")
+		return
+	}
+
+	deal.Dispute.Priority = true
+	deal.Dispute.PayReference = reference
+
+	err = db.Save(deal)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not save deal")
+		return
+	}
+
+	auditLog.Record(deal.ID, audit.EventType("DISPUTE_UPGRADED"),
+		m.Author.ID, m.Author.Username,
+		"dispute upgraded to priority via payment: "+reference)
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Payment confirmed! Dispute `%s` upgraded to priority.\nAn admin will review and resolve within 15 minutes.",
+		deal.Dispute.ID,
 	))
 }
