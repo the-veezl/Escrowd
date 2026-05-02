@@ -33,18 +33,21 @@ type Dispute struct {
 }
 
 type Escrow struct {
-	ID           string
-	SenderID     string
-	SenderName   string
-	ReceiverID   string
-	ReceiverName string
-	Amount       int
-	Status       Status
-	HashLock     string
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	Dispute      *Dispute
-	Signature    string
+	ID            string
+	SenderID      string
+	SenderName    string
+	ReceiverID    string
+	ReceiverName  string
+	Amount        int
+	Status        Status
+	HashLock      string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	Dispute       *Dispute
+	Signature     string
+	StellarWallet string
+	StellarFunded bool
+	StellarTxHash string
 }
 
 func New(senderID string, senderName string, receiverID string, receiverName string, amount int, secret string) Escrow {

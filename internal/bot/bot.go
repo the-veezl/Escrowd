@@ -21,6 +21,8 @@ import (
 	"escrowd/internal/backup"
 	"escrowd/internal/bruteforce"
 
+	"escrowd/internal/stellar"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -117,6 +119,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleBackup(s, m, parts)
 	case "paid":
 		handlePaid(s, m, parts)
+	case "balance":
+		handleBalance(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -158,18 +162,41 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 	secret := crypto.GenerateSecret()
 	deal := escrow.New(senderID, senderName, receiver, receiver, amount, secret)
 
+	// create a stellar escrow wallet for this deal
+	if err := stellar.ValidateNetwork(); err == nil {
+		wallet, walletErr := stellar.GenerateEscrowWallet(deal.ID)
+		if walletErr == nil {
+			deal.StellarWallet = wallet.PublicKey
+			auditLog.Record(deal.ID, audit.EventType("STELLAR_WALLET_CREATED"),
+				senderID, senderName,
+				"wallet: "+wallet.PublicKey)
+		}
+	}
+
 	err = db.Save(deal)
-	auditLog.Record(deal.ID, audit.EventLocked, senderID, senderName,
-		fmt.Sprintf("locked %d for %s", deal.Amount, deal.ReceiverName))
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, "could not save deal")
 		return
 	}
 
+	auditLog.Record(deal.ID, audit.EventLocked,
+		senderID, senderName,
+		fmt.Sprintf("locked %d for %s", deal.Amount, deal.ReceiverName))
+
+	crypto.ZeroString(&secret)
+
+	stellarMsg := ""
+	if deal.StellarWallet != "" {
+		stellarMsg = fmt.Sprintf(
+			"\n\nStellar escrow wallet: `%s`\nSend %d XLM to this address to activate the deal.\n⚠️ Testnet only — use testnet XLM",
+			deal.StellarWallet, deal.Amount)
+	}
+
 	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
-		"Escrow locked!\nID: `%s`\nFrom: %s\nTo: %s\nAmount: %d\nExpires: %s\n\nSecret sent to your DMs %s",
+		"Escrow locked!\nID: `%s`\nFrom: %s\nTo: %s\nAmount: %d XLM\nExpires: %s%s\n\nSecret sent to your DMs %s",
 		deal.ID, deal.SenderName, deal.ReceiverName, deal.Amount,
-		deal.ExpiresAt.Format("2006-01-02 15:04:05"), senderName,
+		deal.ExpiresAt.Format("2006-01-02 15:04:05"),
+		stellarMsg, senderName,
 	))
 
 	dm, err := s.UserChannelCreate(m.Author.ID)
@@ -181,7 +208,6 @@ func handleLock(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 		"Your secret for escrow `%s`:\n`%s`\n\nKeep this private. Share it with %s only after they deliver.",
 		deal.ID, secret, deal.ReceiverName,
 	))
-	crypto.ZeroString(&secret)
 }
 
 func handleClaim(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
@@ -693,4 +719,44 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.0f minutes", d.Minutes())
 	}
 	return fmt.Sprintf("%.1f hours", d.Hours())
+}
+func handleBalance(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 3 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow balance <id>")
+		return
+	}
+
+	id := parts[2]
+
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	if deal.StellarWallet == "" {
+		s.ChannelMessageSend(m.ChannelID, "no stellar wallet for this deal")
+		return
+	}
+
+	balance, err := stellar.GetBalance(deal.StellarWallet)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not check balance: "+err.Error())
+		return
+	}
+
+	funded := "❌ not funded"
+	if balance != "0" {
+		funded = "✅ funded"
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Stellar wallet for `%s`:\nAddress: `%s`\nBalance: %s XLM\nStatus: %s",
+		deal.ID, deal.StellarWallet, balance, funded,
+	))
 }

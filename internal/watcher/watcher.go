@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"escrowd/internal/escrow"
+	"escrowd/internal/stellar"
 	"escrowd/internal/store"
 	"fmt"
 	"time"
@@ -13,6 +14,14 @@ func Start(db *store.Store) {
 		for {
 			runCheck(db)
 			time.Sleep(1 * time.Hour)
+		}
+	}()
+
+	go func() {
+		fmt.Println("stellar payment watcher started — checking every 30 seconds")
+		for {
+			runStellarCheck(db)
+			time.Sleep(30 * time.Second)
 		}
 	}()
 }
@@ -60,5 +69,47 @@ func runCheck(db *store.Store) {
 
 	if expired > 0 {
 		fmt.Printf("watcher: auto-refunded %d expired deal(s)\n", expired)
+	}
+}
+
+func runStellarCheck(db *store.Store) {
+	ids, err := db.ListIDs()
+	if err != nil {
+		return
+	}
+
+	for _, id := range ids {
+		deal, err := db.Get(id)
+		if err != nil {
+			continue
+		}
+
+		// only check deals with a stellar wallet that are not yet funded
+		if deal.StellarWallet == "" || deal.StellarFunded {
+			continue
+		}
+
+		if deal.Status != escrow.StatusLocked {
+			continue
+		}
+
+		// check if the wallet has received funds
+		balance, err := stellar.GetBalance(deal.StellarWallet)
+		if err != nil {
+			continue
+		}
+
+		if balance == "0" {
+			continue
+		}
+
+		// funds received — mark as funded
+		deal.StellarFunded = true
+		err = db.Save(deal)
+		if err != nil {
+			continue
+		}
+
+		fmt.Printf("stellar payment detected for deal %s — balance: %s XLM\n", deal.ID, balance)
 	}
 }
