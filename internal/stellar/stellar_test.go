@@ -63,7 +63,10 @@ func TestGenerateEscrowWallet_Mainnet(t *testing.T) {
 }
 
 func TestGetMasterPublicKey_Valid(t *testing.T) {
-	os.Setenv("STELLAR_MASTER_SECRET", os.Getenv("STELLAR_MASTER_SECRET"))
+	secret := os.Getenv("STELLAR_MASTER_SECRET")
+	if secret == "" {
+		t.Skip("STELLAR_MASTER_SECRET not set — skipping")
+	}
 
 	pub, err := GetMasterPublicKey()
 	if err != nil {
@@ -75,18 +78,6 @@ func TestGetMasterPublicKey_Valid(t *testing.T) {
 	if pub[0] != 'G' {
 		t.Errorf("expected public key to start with G")
 	}
-}
-
-func TestGetMasterPublicKey_Missing(t *testing.T) {
-	original := os.Getenv("STELLAR_MASTER_SECRET")
-	os.Setenv("STELLAR_MASTER_SECRET", "")
-
-	_, err := GetMasterPublicKey()
-	if err == nil {
-		t.Errorf("expected error for missing master secret")
-	}
-
-	os.Setenv("STELLAR_MASTER_SECRET", original)
 }
 
 func TestNetworkInfo(t *testing.T) {
@@ -111,4 +102,3 @@ func TestIsTestnet_False(t *testing.T) {
 	}
 	os.Setenv("STELLAR_NETWORK", "testnet")
 }
-

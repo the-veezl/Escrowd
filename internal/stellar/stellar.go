@@ -120,6 +120,8 @@ func SendPayment(fromSecret string, toPublic string, amount string, memo string)
 		return "", fmt.Errorf("could not load source account: %w", err)
 	}
 
+	// use the provided amount directly rather than full balance
+	// caller is responsible for leaving enough for fees and reserve
 	tx, err := txnbuild.NewTransaction(txnbuild.TransactionParams{
 		SourceAccount:        &sourceAccount,
 		IncrementSequenceNum: true,
