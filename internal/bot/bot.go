@@ -122,6 +122,8 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleBalance(s, m, parts)
 	case "setaddr":
 		handleSetAddr(s, m, parts)
+	case "help":
+		handleHelp(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -865,4 +867,58 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.0f minutes", d.Minutes())
 	}
 	return fmt.Sprintf("%.1f hours", d.Hours())
+}
+func handleHelp(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	help := `**escrowd** — Safe peer-to-peer trading on Discord
+
+**How it works:**
+1. Alice locks a deal with a secret
+2. Bob delivers the goods
+3. Alice reveals the secret
+4. Bob claims — funds release automatically
+
+**Commands:**
+` + "```" + `
+!escrow lock <receiver> <amount>
+  Create a new escrow deal
+
+!escrow claim <id> <secret>
+  Claim a deal with your secret
+
+!escrow refund <id>
+  Refund a locked deal (sender only)
+
+!escrow status <id>
+  Check deal status and integrity
+
+!escrow balance <id>
+  Check Stellar wallet balance
+
+!escrow setaddr <id> <stellar-address>
+  Set your Stellar address for fund release
+
+!escrow dispute <id> <reason>
+  Raise a dispute — freezes the deal
+
+!escrow evidence <id> <link>
+  Submit evidence for a dispute
+
+!escrow paid <id> <reference>
+  Confirm Paystack payment for priority dispute
+
+!escrow history <id>
+  View full audit trail
+
+!escrow forget
+  Delete your personal data (GDPR)
+
+!escrow help
+  Show this message
+` + "```" + `
+**Free:** Basic escrow + 24h dispute resolution
+**KES 60:** Priority dispute resolved in 15 minutes
+
+Built with Go · github.com/xbuyan/Escrowd`
+
+	s.ChannelMessageSend(m.ChannelID, help)
 }
