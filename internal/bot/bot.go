@@ -7,6 +7,7 @@ import (
 	"escrowd/internal/bruteforce"
 	"escrowd/internal/crypto"
 	"escrowd/internal/escrow"
+	"escrowd/internal/mpesa"
 	"escrowd/internal/payment"
 	"escrowd/internal/ratelimit"
 	"escrowd/internal/stellar"
@@ -124,6 +125,10 @@ func messageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handleSetAddr(s, m, parts)
 	case "help":
 		handleHelp(s, m, parts)
+	case "pay":
+		handlePay(s, m, parts)
+	case "mpesastatus":
+		handleMpesaStatus(s, m, parts)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "unknown command: "+command)
 	}
@@ -909,6 +914,12 @@ func handleHelp(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 !escrow history <id>
   View full audit trail
 
+!escrow pay <id> <phone>
+  Fund deal via M-Pesa STK push
+
+!escrow mpesastatus <id> <checkout-id>
+  Check M-Pesa payment status
+
 !escrow forget
   Delete your personal data (GDPR)
 
@@ -921,4 +932,107 @@ func handleHelp(s *discordgo.Session, m *discordgo.MessageCreate, parts []string
 Built with Go · github.com/xbuyan/Escrowd`
 
 	s.ChannelMessageSend(m.ChannelID, help)
+}
+func handlePay(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow pay <id> <phone>\nexample: !escrow pay abc-123 0712345678")
+		return
+	}
+
+	id := parts[2]
+	phone := parts[3]
+
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	if deal.SenderID != m.Author.ID {
+		s.ChannelMessageSend(m.ChannelID, "only the sender can initiate payment")
+		return
+	}
+
+	if deal.Status != escrow.StatusLocked {
+		s.ChannelMessageSend(m.ChannelID, "deal is not in locked state")
+		return
+	}
+
+	formattedPhone := mpesa.FormatPhone(phone)
+	if len(formattedPhone) != 12 {
+		s.ChannelMessageSend(m.ChannelID, "invalid phone number — use format 0712345678 or 254712345678")
+		return
+	}
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"Initiating M-Pesa payment...\nPhone: %s\nAmount: KES %d\nCheck your phone for the STK push prompt.",
+		formattedPhone, deal.Amount,
+	))
+
+	stkResp, err := mpesa.InitiateSTKPush(formattedPhone, deal.Amount, deal.ID)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "M-Pesa payment failed: "+err.Error())
+		return
+	}
+
+	auditLog.Record(deal.ID, audit.EventType("MPESA_STK_INITIATED"),
+		m.Author.ID, m.Author.Username,
+		"STK push initiated — checkout: "+stkResp.CheckoutRequestID)
+
+	s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+		"M-Pesa prompt sent!\nCheckout ID: `%s`\n\nEnter your M-Pesa PIN on your phone to complete payment.\nOnce paid type:\n`!escrow mpesastatus %s %s`",
+		stkResp.CheckoutRequestID, id, stkResp.CheckoutRequestID,
+	))
+}
+
+func handleMpesaStatus(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
+	if len(parts) < 4 {
+		s.ChannelMessageSend(m.ChannelID, "usage: !escrow mpesastatus <id> <checkout-request-id>")
+		return
+	}
+
+	id := parts[2]
+	checkoutID := parts[3]
+
+	if err := validator.ValidateID(id); err != nil {
+		s.ChannelMessageSend(m.ChannelID, "invalid ID: "+err.Error())
+		return
+	}
+
+	deal, err := db.Get(id)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "deal not found: "+id)
+		return
+	}
+
+	queryResp, err := mpesa.QuerySTKStatus(checkoutID)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, "could not query payment status: "+err.Error())
+		return
+	}
+
+	if queryResp.ResultCode == "0" {
+		deal.StellarFunded = true
+		db.Save(deal)
+
+		auditLog.Record(deal.ID, audit.EventType("MPESA_PAYMENT_CONFIRMED"),
+			m.Author.ID, m.Author.Username,
+			"M-Pesa payment confirmed — checkout: "+checkoutID)
+
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+			"M-Pesa payment confirmed!\nDeal `%s` is now funded.\nBob can now deliver and claim when ready.",
+			deal.ID,
+		))
+	} else {
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+			"Payment status: %s\nResult: %s",
+			queryResp.ResponseDescription,
+			queryResp.ResultDesc,
+		))
+	}
 }
