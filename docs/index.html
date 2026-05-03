@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>escrowd — Safe peer-to-peer trading on Discord</title>
+<meta name="description" content="Cryptographic escrow for Discord. Lock funds, deliver goods, claim automatically. No signup. No fees for basic trades.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080d0a;
+    --bg2: #0d1510;
+    --bg3: #111a13;
+    --accent: #00e87a;
+    --accent2: #00b85e;
+    --accent3: #005c2e;
+    --text: #e8f5ee;
+    --text2: #8aab96;
+    --text3: #4a6b55;
+    --border: #1a2e20;
+    --border2: #243b2b;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --red: #ff4444;
+    --amber: #ffaa00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* grid overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* glow */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -20vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80vw;
+    height: 60vh;
+    background: radial-gradient(ellipse, rgba(0,232,122,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 32px; position: relative; z-index: 1; }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 100;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    background: rgba(8,13,10,0.85);
+  }
+  .nav-inner {
+    max-width: 1100px; margin: 0 auto; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    text-decoration: none;
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--text2); }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-cta {
+    background: var(--accent) !important;
+    color: var(--bg) !important;
+    padding: 8px 18px !important;
+    border-radius: 4px;
+    font-weight: 700 !important;
+    transition: opacity 0.2s !important;
+  }
+  .nav-cta:hover { opacity: 0.85 !important; color: var(--bg) !important; }
+
+  /* HERO */
+  .hero {
+    padding: 160px 0 100px;
+    text-align: center;
+    position: relative;
+  }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); letter-spacing: 0.12em;
+    border: 1px solid var(--accent3);
+    background: rgba(0,232,122,0.05);
+    padding: 6px 14px; border-radius: 2px;
+    margin-bottom: 32px;
+  }
+  .hero-tag::before {
+    content: '●';
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  h1 {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -3px;
+    margin-bottom: 28px;
+  }
+  h1 .line1 { display: block; color: var(--text); }
+  h1 .line2 {
+    display: block;
+    color: var(--accent);
+    position: relative;
+  }
+  .hero-sub {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text2);
+    max-width: 520px;
+    margin: 0 auto 48px;
+    line-height: 1.7;
+  }
+  .hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    padding: 14px 28px; border-radius: 4px;
+    text-decoration: none;
+    letter-spacing: 0.03em;
+    transition: all 0.2s;
+    border: 1px solid var(--accent);
+  }
+  .btn-primary:hover { background: transparent; color: var(--accent); }
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: transparent;
+    color: var(--text2);
+    font-family: var(--mono); font-size: 13px;
+    padding: 14px 28px; border-radius: 4px;
+    text-decoration: none;
+    border: 1px solid var(--border2);
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* STATS BAR */
+  .stats-bar {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 24px 0;
+    margin-bottom: 100px;
+  }
+  .stats-inner {
+    display: flex; gap: 0;
+    justify-content: space-around;
+    flex-wrap: wrap;
+  }
+  .stat {
+    text-align: center; padding: 8px 24px;
+    border-right: 1px solid var(--border);
+    flex: 1; min-width: 140px;
+  }
+  .stat:last-child { border-right: none; }
+  .stat-num {
+    font-family: var(--mono); font-size: 28px; font-weight: 700;
+    color: var(--accent); display: block; line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-label {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3); letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* SECTION */
+  section { margin-bottom: 120px; }
+  .section-tag {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent); letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 14px; display: block;
+  }
+  h2 {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 800; letter-spacing: -2px;
+    line-height: 1.05; margin-bottom: 16px;
+  }
+  .section-sub {
+    font-family: var(--mono); font-size: 14px;
+    color: var(--text2); max-width: 500px;
+    line-height: 1.7; margin-bottom: 56px;
+  }
+
+  /* HOW IT WORKS */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .step {
+    background: var(--bg2);
+    padding: 32px 28px;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .step:hover { background: var(--bg3); }
+  .step-num {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3); letter-spacing: 0.1em;
+    margin-bottom: 20px; display: block;
+  }
+  .step-icon {
+    font-size: 28px; margin-bottom: 16px; display: block;
+    line-height: 1;
+  }
+  .step h3 {
+    font-size: 16px; font-weight: 700;
+    margin-bottom: 10px; color: var(--text);
+  }
+  .step p {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text2); line-height: 1.6;
+  }
+  .step-connector {
+    position: absolute; right: -1px; top: 50%;
+    transform: translateY(-50%);
+    width: 20px; height: 20px;
+    background: var(--accent);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+    z-index: 2;
+  }
+  .step:last-child .step-connector { display: none; }
+
+  /* TERMINAL DEMO */
+  .terminal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .terminal-bar {
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #ffbd2e; }
+  .dot.g { background: #28c840; }
+  .terminal-title {
+    font-size: 11px; color: var(--text3);
+    margin-left: 8px; letter-spacing: 0.05em;
+  }
+  .terminal-body { padding: 24px; line-height: 2; }
+  .t-prompt { color: var(--accent2); }
+  .t-cmd { color: var(--text); }
+  .t-out { color: var(--text2); padding-left: 0; }
+  .t-key { color: var(--accent); }
+  .t-val { color: #ffaa00; }
+  .t-success { color: var(--accent); font-weight: 700; }
+  .t-warn { color: var(--amber); }
+  .t-blank { display: block; height: 8px; }
+
+  /* FEATURES GRID */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .feature {
+    background: var(--bg2);
+    padding: 32px 28px;
+    transition: background 0.2s;
+  }
+  .feature:hover { background: var(--bg3); }
+  .feature-icon {
+    width: 40px; height: 40px;
+    background: rgba(0,232,122,0.1);
+    border: 1px solid var(--accent3);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; margin-bottom: 18px;
+  }
+  .feature h3 {
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 10px; color: var(--text);
+  }
+  .feature p {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text2); line-height: 1.7;
+  }
+
+  /* SECURITY */
+  .security-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .security-item {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    display: flex; align-items: flex-start; gap: 12px;
+    transition: border-color 0.2s;
+  }
+  .security-item:hover { border-color: var(--accent3); }
+  .security-check {
+    color: var(--accent); font-family: var(--mono);
+    font-size: 12px; flex-shrink: 0; margin-top: 1px;
+  }
+  .security-text {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text2); line-height: 1.5;
+  }
+
+  /* PRICING */
+  .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .price-card {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px; padding: 36px 32px;
+    position: relative; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .price-card:hover { border-color: var(--accent3); }
+  .price-card.featured { border-color: var(--accent); }
+  .price-card.featured::before {
+    content: 'POPULAR';
+    position: absolute; top: 16px; right: 16px;
+    font-family: var(--mono); font-size: 9px;
+    color: var(--bg); background: var(--accent);
+    padding: 3px 8px; border-radius: 2px;
+    letter-spacing: 0.1em;
+  }
+  .price-name {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 16px;
+  }
+  .price-amount {
+    font-size: 48px; font-weight: 800;
+    color: var(--text); line-height: 1;
+    margin-bottom: 8px; letter-spacing: -2px;
+  }
+  .price-amount span {
+    font-size: 18px; color: var(--text2);
+    font-weight: 400; letter-spacing: 0;
+  }
+  .price-desc {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text2); margin-bottom: 28px;
+    line-height: 1.6;
+  }
+  .price-features { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .price-features li {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text2); display: flex; gap: 10px;
+  }
+  .price-features li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+
+  /* COMPARISON */
+  .comparison {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px; overflow: hidden;
+  }
+  .comparison table { width: 100%; border-collapse: collapse; }
+  .comparison th, .comparison td {
+    padding: 14px 20px;
+    font-family: var(--mono); font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+  .comparison th {
+    font-size: 11px; color: var(--text3);
+    letter-spacing: 0.08em; background: var(--bg3);
+    text-transform: uppercase;
+  }
+  .comparison th:first-child,
+  .comparison td:first-child { text-align: left; color: var(--text2); }
+  .comparison tr:last-child td { border-bottom: none; }
+  .comparison .yes { color: var(--accent); }
+  .comparison .no { color: var(--red); }
+  .comparison .partial { color: var(--amber); }
+  .comparison .highlight { background: rgba(0,232,122,0.04); }
+  .comparison .highlight td { color: var(--text); }
+
+  /* CTA */
+  .cta-section {
+    text-align: center;
+    padding: 80px 0;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    background: var(--bg2);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 80px;
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 60%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .cta-section h2 { margin-bottom: 16px; }
+  .cta-section p {
+    font-family: var(--mono); font-size: 14px;
+    color: var(--text2); margin-bottom: 36px;
+  }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+    position: relative; z-index: 1;
+  }
+  .footer-inner {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .footer-logo {
+    font-family: var(--mono); font-size: 16px;
+    font-weight: 700; color: var(--accent);
+  }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3); text-decoration: none;
+    letter-spacing: 0.05em; transition: color 0.2s;
+  }
+  .footer-links a:hover { color: var(--accent); }
+  .footer-copy {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text3);
+  }
+
+  /* ANIMATIONS */
+  .fade-in {
+    opacity: 0; transform: translateY(20px);
+    animation: fadeIn 0.6s ease forwards;
+  }
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in:nth-child(1) { animation-delay: 0.1s; }
+  .fade-in:nth-child(2) { animation-delay: 0.2s; }
+  .fade-in:nth-child(3) { animation-delay: 0.3s; }
+  .fade-in:nth-child(4) { animation-delay: 0.4s; }
+
+  @media (max-width: 768px) {
+    .pricing { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    h1 { letter-spacing: -2px; }
+    .stats-inner { gap: 0; }
+    .stat { min-width: 50%; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="logo">escrow<span>d</span></a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="#pricing">Pricing</a>
+      <a href="https://github.com/xbuyan/Escrowd" target="_blank">GitHub</a>
+      <a href="https://discord.com/oauth2/authorize?client_id=1489985642094919883&permissions=274877975552&integration_type=0&scope=bot" class="nav-cta">Add to Discord</a>
+    </div>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-tag fade-in">● LIVE ON STELLAR TESTNET</div>
+    <h1 class="fade-in">
+      <span class="line1">Trade safely.</span>
+      <span class="line2">No trust required.</span>
+    </h1>
+    <p class="hero-sub fade-in">
+      Cryptographic escrow for Discord. Lock funds on the Stellar blockchain. 
+      Deliver goods. Claim automatically. No signup. No fees for basic trades.
+    </p>
+    <div class="hero-actions fade-in">
+      <a href="https://discord.com/oauth2/authorize?client_id=1489985642094919883&permissions=274877975552&integration_type=0&scope=bot" class="btn-primary">
+        ↗ Add to Discord
+      </a>
+      <a href="https://github.com/xbuyan/Escrowd" class="btn-secondary" target="_blank">
+        ⌥ View on GitHub
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="wrap">
+    <div class="stats-inner">
+      <div class="stat">
+        <span class="stat-num">74</span>
+        <span class="stat-label">Passing Tests</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">13</span>
+        <span class="stat-label">Bot Commands</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">10</span>
+        <span class="stat-label">Security Layers</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">KES 60</span>
+        <span class="stat-label">Priority Dispute</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">24/7</span>
+        <span class="stat-label">Always Online</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <span class="section-tag">// how it works</span>
+    <h2>Three steps.<br>Zero trust needed.</h2>
+    <p class="section-sub">
+      escrowd acts as a cryptographic middleman. Funds are locked on the Stellar blockchain 
+      until delivery is confirmed.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01 / LOCK</span>
+        <span class="step-icon">🔒</span>
+        <h3>Alice locks the deal</h3>
+        <p>Alice types <code>!escrow lock bob 10</code>. A unique Stellar wallet is created. The secret is sent to Alice's DMs only.</p>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step">
+        <span class="step-num">02 / DELIVER</span>
+        <span class="step-icon">📦</span>
+        <h3>Bob delivers the goods</h3>
+        <p>Bob sees the deal is locked on-chain. He delivers the digital goods, knowing funds are secured cryptographically.</p>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step">
+        <span class="step-num">03 / CLAIM</span>
+        <span class="step-icon">✅</span>
+        <h3>Alice reveals, Bob claims</h3>
+        <p>Alice shares the secret. Bob types <code>!escrow claim</code>. Funds release automatically on Stellar. Done.</p>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step">
+        <span class="step-num">04 / DISPUTE</span>
+        <span class="step-icon">⚖️</span>
+        <h3>Something went wrong?</h3>
+        <p>Raise a dispute. Deal freezes instantly. Submit evidence. Free 24h auto-resolution or KES 60 for 15-minute priority review.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEMO -->
+  <section>
+    <span class="section-tag">// demo</span>
+    <h2>See it in action.</h2>
+    <p class="section-sub">Real commands. Real output. Run directly in your Discord server.</p>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="dot r"></div>
+        <div class="dot y"></div>
+        <div class="dot g"></div>
+        <span class="terminal-title">#trading-channel — Discord</span>
+      </div>
+      <div class="terminal-body">
+        <div><span class="t-prompt">alice » </span><span class="t-cmd">!escrow lock bob 10</span></div>
+        <div><span class="t-out">Escrow locked!</span></div>
+        <div><span class="t-out">ID: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-key">`984d0ab5-a8f3-4616-9e6d...`</span></span></div>
+        <div><span class="t-out">Wallet: <span class="t-key">`GC4LCBDPHLMKMZIHOHDRVT4HJ3TF...`</span></span></div>
+        <div><span class="t-out">Amount: <span class="t-val">10 XLM</span> · Expires: 48h · <span class="t-warn">Secret sent to your DMs</span></span></div>
+        <div class="t-blank"></div>
+        <div><span class="t-prompt">bob &nbsp;» </span><span class="t-cmd">!escrow setaddr 984d0ab5... GDRULLA3LSG...</span></div>
+        <div><span class="t-out">Stellar address set. Funds will release to: <span class="t-key">GDRULLA3...</span></span></div>
+        <div class="t-blank"></div>
+        <div><span class="t-prompt">alice » </span><span class="t-cmd">!escrow claim 984d0ab5... 99b2a6e4a009155b80e4...</span></div>
+        <div><span class="t-success">✅ Escrow claimed!</span></div>
+        <div><span class="t-success">✅ 10.0000000 XLM released on Stellar</span></div>
+        <div><span class="t-out">Transaction: <span class="t-key">`f7c01222bc8a61223da009b2d694...`</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <span class="section-tag">// features</span>
+    <h2>Everything you need.<br>Nothing you don't.</h2>
+    <p class="section-sub">Built for real traders, not enterprise clients.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">⛓️</div>
+        <h3>Stellar Blockchain Custody</h3>
+        <p>Every deal gets its own Stellar wallet. Funds move on-chain automatically when deals are claimed. Full transaction history on stellar.expert.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔐</div>
+        <h3>SHA-256 Hash Locks</h3>
+        <p>Secrets are never stored — only their SHA-256 fingerprint. One wrong character fails the claim. Cryptographically impossible to fake.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⚖️</div>
+        <h3>Dispute Resolution</h3>
+        <p>Raise a dispute and the deal freezes instantly. Submit evidence links. Free auto-resolution in 24h or KES 60 for priority 15-minute review.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📋</div>
+        <h3>Immutable Audit Trail</h3>
+        <p>Every action is recorded permanently with timestamp and actor. Nobody can deny what happened. Run <code>!escrow history</code> anytime.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🛡️</div>
+        <h3>Brute Force Protection</h3>
+        <p>Exponential backoff on failed claim attempts: 1s, 2s, 4s, 8s, 16s, 32s — then locked for 1 hour. Automated scripts cannot brute-force secrets.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔄</div>
+        <h3>Auto-Expiry</h3>
+        <p>Deals that aren't claimed automatically refund after 48 hours. No funds get stuck forever. Disputed deals also auto-resolve on expiry.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY -->
+  <section id="security">
+    <span class="section-tag">// security</span>
+    <h2>Security is the<br>foundation.</h2>
+    <p class="section-sub">Not a feature added on top. Every component was designed with a specific threat model.</p>
+    <div class="security-grid">
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">SHA-256 hash locks — secrets never stored</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">AES-256-GCM database encryption at rest</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Memory zeroing after every secret use</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Discord user ID authorization (not usernames)</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Rate limiting — 10 ops per user per hour</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Exponential backoff brute force shield</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Tamper-evident deal signatures</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Append-only audit log — non-repudiation</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">GDPR user data deletion on request</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Automated 24h encrypted backups</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">Stellar private keys encrypted before storage</span></div>
+      <div class="security-item"><span class="security-check">✓</span><span class="security-text">74 automated tests — all passing</span></div>
+    </div>
+  </section>
+
+  <!-- COMPARISON -->
+  <section>
+    <span class="section-tag">// comparison</span>
+    <h2>Why not PayPal?</h2>
+    <p class="section-sub">Because PayPal costs more than your trade is worth.</p>
+    <div class="comparison">
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>escrowd</th>
+            <th>PayPal</th>
+            <th>Binance P2P</th>
+            <th>Trust me bro</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="highlight">
+            <td>Fee for $10 trade</td>
+            <td class="yes">Free</td>
+            <td class="no">$0.60+</td>
+            <td class="partial">0.1%</td>
+            <td class="yes">Free</td>
+          </tr>
+          <tr>
+            <td>No signup required</td>
+            <td class="yes">✓</td>
+            <td class="no">✗</td>
+            <td class="no">✗ KYC</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr class="highlight">
+            <td>Works in Discord</td>
+            <td class="yes">✓</td>
+            <td class="no">✗</td>
+            <td class="no">✗</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>Dispute resolution</td>
+            <td class="yes">✓ Free</td>
+            <td class="partial">Slow</td>
+            <td class="partial">Limited</td>
+            <td class="no">✗</td>
+          </tr>
+          <tr class="highlight">
+            <td>Blockchain custody</td>
+            <td class="yes">✓ Stellar</td>
+            <td class="no">✗</td>
+            <td class="partial">Partial</td>
+            <td class="no">✗</td>
+          </tr>
+          <tr>
+            <td>Fraud protection</td>
+            <td class="yes">✓ Cryptographic</td>
+            <td class="partial">Partial</td>
+            <td class="partial">Partial</td>
+            <td class="no">✗ None</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <span class="section-tag">// pricing</span>
+    <h2>Simple pricing.<br>No surprises.</h2>
+    <p class="section-sub">Free for basic trades. Pay only when you need priority dispute resolution.</p>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="price-name">Free tier</div>
+        <div class="price-amount">KES 0<span>/trade</span></div>
+        <p class="price-desc">For everyday peer-to-peer trades. Full cryptographic security at zero cost.</p>
+        <ul class="price-features">
+          <li>Unlimited escrow deals</li>
+          <li>Stellar blockchain custody</li>
+          <li>SHA-256 hash lock security</li>
+          <li>Dispute resolution in 24 hours</li>
+          <li>Full audit trail</li>
+          <li>Auto-expiry protection</li>
+        </ul>
+      </div>
+      <div class="price-card featured">
+        <div class="price-name">Turbo Dispute</div>
+        <div class="price-amount">KES 60<span>/dispute</span></div>
+        <p class="price-desc">When you need it resolved now, not tomorrow. Human review in 15 minutes.</p>
+        <ul class="price-features">
+          <li>Everything in Free tier</li>
+          <li>Priority dispute queue</li>
+          <li>Human review in 15 minutes</li>
+          <li>Evidence-based resolution</li>
+          <li>Pay via M-Pesa or card</li>
+          <li>Resolution report on completion</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <div class="cta-section">
+    <span class="section-tag" style="display:block;margin-bottom:16px;">// get started</span>
+    <h2>Add escrowd to<br>your server.</h2>
+    <p>Free. Takes 30 seconds. Type <code style="color:var(--accent)">!escrow help</code> to get started.</p>
+    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+      <a href="https://discord.com/oauth2/authorize?client_id=1489985642094919883&permissions=274877975552&integration_type=0&scope=bot" class="btn-primary">
+        ↗ Add to Discord — Free
+      </a>
+      <a href="https://github.com/xbuyan/Escrowd" class="btn-secondary" target="_blank">
+        ⌥ View Source Code
+      </a>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <div class="footer-logo">escrowd</div>
+      <div class="footer-links">
+        <a href="https://github.com/xbuyan/Escrowd" target="_blank">GitHub</a>
+        <a href="https://discord.com/oauth2/authorize?client_id=1489985642094919883&permissions=274877975552&integration_type=0&scope=bot">Add Bot</a>
+        <a href="https://stellar.expert/explorer/testnet" target="_blank">Stellar Explorer</a>
+      </div>
+      <div class="footer-copy">Built with Go · Nairobi, Kenya · 2026</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
