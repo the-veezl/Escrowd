@@ -1,0 +1,21 @@
+# Compiled binary
+escrowd.exe
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Environment variables and secrets
+.env
+
+# Database files
+data/
+data-audit/
+
+# Backups
+backups/
+
+# Fly config
+fly.toml

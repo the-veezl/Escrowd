@@ -1,0 +1,11 @@
+app = "escrowd"
+primary_region = "jnb"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  STELLAR_NETWORK = "testnet"
+
+[processes]
+  app = "./escrowd bot"
