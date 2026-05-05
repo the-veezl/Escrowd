@@ -1,11 +1,10 @@
 package audit
 
 import (
-	"encoding/json"
+	"context"
+	"escrowd/internal/store"
 	"fmt"
 	"time"
-
-	badger "github.com/dgraph-io/badger/v4"
 )
 
 type EventType string
@@ -31,61 +30,40 @@ type Entry struct {
 }
 
 type Log struct {
-	db *badger.DB
+	auditStore *store.AuditStore
 }
 
-func New(db *badger.DB) *Log {
-	return &Log{db: db}
+func New(auditStore *store.AuditStore) *Log {
+	return &Log{auditStore: auditStore}
 }
 
 func (l *Log) Record(escrowID string, event EventType, actorID string, actorName string, detail string) error {
-	entry := Entry{
-		ID:        fmt.Sprintf("audit-%d", time.Now().UnixNano()),
-		EscrowID:  escrowID,
-		Event:     event,
-		ActorID:   actorID,
-		ActorName: actorName,
-		Detail:    detail,
-		Timestamp: time.Now(),
-	}
-
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-
-	return l.db.Update(func(tx *badger.Txn) error {
-		return tx.Set([]byte(entry.ID), data)
-	})
+	return l.auditStore.Record(escrowID, string(event), actorID, actorName, detail)
 }
 
 func (l *Log) GetByEscrow(escrowID string) ([]Entry, error) {
+	rows, err := l.auditStore.GetByEscrow(escrowID)
+	if err != nil {
+		return nil, err
+	}
+
 	var entries []Entry
+	for _, r := range rows {
+		entries = append(entries, Entry{
+			ID:        r.ID,
+			EscrowID:  r.EscrowID,
+			Event:     EventType(r.Event),
+			ActorID:   r.ActorID,
+			ActorName: r.ActorName,
+			Detail:    r.Detail,
+			Timestamp: r.Timestamp,
+		})
+	}
 
-	err := l.db.View(func(tx *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		it := tx.NewIterator(opts)
-		defer it.Close()
-
-		prefix := []byte("audit-")
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			err := item.Value(func(val []byte) error {
-				var entry Entry
-				if err := json.Unmarshal(val, &entry); err != nil {
-					return err
-				}
-				if entry.EscrowID == escrowID {
-					entries = append(entries, entry)
-				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
-	return entries, err
+	return entries, nil
 }
+
+// Ensure unused import is used
+var _ = fmt.Sprintf
+var _ = context.Background
+var _ = time.Now
