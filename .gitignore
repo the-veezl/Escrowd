@@ -13,3 +13,5 @@ escrowd
 data/
 .env
 backups/
+start.sh
+.env.local
