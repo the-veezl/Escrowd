@@ -1,7 +1,6 @@
 package main
 
 import (
-	"escrowd/cmd/escrowd"
 	"escrowd/internal/bot"
 	"fmt"
 	"os"
@@ -13,5 +12,7 @@ func main() {
 		bot.Start()
 		return
 	}
-	escrowd.Run()
+	fmt.Println("usage: escrowd bot")
+	fmt.Println("  starts the Discord bot")
+	os.Exit(1)
 }
