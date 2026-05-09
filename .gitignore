@@ -17,3 +17,5 @@ start.sh
 .env.local
 data-audit/
 data-audit/
+.env.local
+start.sh
