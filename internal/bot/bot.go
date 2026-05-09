@@ -591,7 +591,7 @@ func handleResolve(s *discordgo.Session, m *discordgo.MessageCreate, parts []str
 		return
 	}
 
-	if m.Author.Username != "klucianob_95373" {
+	if m.Author.ID != os.Getenv("1398616689976807498") {
 		s.ChannelMessageSend(m.ChannelID, "only an escrowd admin can resolve disputes")
 		return
 	}
@@ -695,7 +695,7 @@ func handleForget(s *discordgo.Session, m *discordgo.MessageCreate, parts []stri
 }
 
 func handleBackup(s *discordgo.Session, m *discordgo.MessageCreate, parts []string) {
-	if m.Author.Username != "klucianob_95373" {
+	if m.Author.ID != os.Getenv("1398616689976807498") {
 		s.ChannelMessageSend(m.ChannelID, "only an escrowd admin can trigger backups")
 		return
 	}
